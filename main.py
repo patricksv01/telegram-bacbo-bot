@@ -31,22 +31,19 @@ def obter_resultados_casinoscores():
     response = requests.get(url, headers=headers)
     soup = BeautifulSoup(response.text, "html.parser")
 
-    resultados_html = soup.select('div.flex.flex-wrap.justify-center > div')
-
     resultados = []
-    for item in resultados_html:
-        imagens = item.select('img[alt="Êxito"]')
-        numeros = item.select('div.text-white.text-xl.font-bold')
+    blocos = soup.select("div.round-details-modal_details_result_outcome__oczTv")
 
-        if len(imagens) != 1 or len(numeros) != 2:
-            continue  # não é um empate
+    for i, bloco in enumerate(blocos):
+        empate = bloco.select_one('img[alt="Êxito"]')
+        soma_span = bloco.select_one(".bac-bo-dice-outcome span.ml-1")
+
+        if not empate or not soma_span:
+            continue
 
         try:
-            num1 = int(numeros[0].text.strip())
-            num2 = int(numeros[1].text.strip())
-            soma = num1 + num2
-            id_unico = f"{num1}-{num2}-{len(resultados)}"
-
+            soma = int(soma_span.text.strip().replace("Σ", ""))
+            id_unico = f"tie_{soma}_{i}"
             resultados.append({
                 "id": id_unico,
                 "tipo": "tie",
@@ -55,7 +52,7 @@ def obter_resultados_casinoscores():
         except:
             continue
 
-    return list(reversed(resultados))  # do mais antigo para o mais novo
+    return list(reversed(resultados))
 
 def verificar_site():
     global acertos_primeira, acertos_gale, erros
@@ -70,7 +67,7 @@ def verificar_site():
 
                 ultimos_ids.append(item["id"])
 
-                if item["soma"] in [5, 6, 7]:
+                if item["soma"] in [5, 6, 7, 10]:
                     sinais_ativos.append({
                         "index": i,
                         "verificado": False
