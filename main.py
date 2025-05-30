@@ -56,10 +56,9 @@ def verificar_site():
                     continue
 
                 resultado_int = int(resultado)
-p
-                # Aqui está sua regra para enviar sinal quando tipo == "tie" e resultado em [5,6,7]
+
                 if tipo == "tie" and resultado_int in [5, 6, 7]:
-                    acertos_primeira += 1  # Você pode adaptar para tratar acertos_gale e erros conforme quiser
+                    acertos_primeira += 1  # Aqui você pode ajustar para o gale se quiser
                     total_acertos = acertos_primeira + acertos_gale
                     total = total_acertos + erros
                     porcentagem = round((total_acertos / total) * 100, 2) if total > 0 else 0
