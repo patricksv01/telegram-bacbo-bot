@@ -95,12 +95,15 @@ def verificar_site():
                     prox1 = historico[index + 1]
                     prox2 = historico[index + 2]
                     if prox1["tipo"] == "red":
+                        global acertos_primeira
                         acertos_primeira += 1
                         resultado_final = "✅ Acertamos de PRIMEIRA!"
                     elif prox2["tipo"] == "red":
+                        global acertos_gale
                         acertos_gale += 1
                         resultado_final = "🟡 Acertamos no GALE!"
                     else:
+                        global erros
                         erros += 1
                         resultado_final = "❌ Não deu... foi ERRO."
 
@@ -144,33 +147,28 @@ def teste_manual():
 @app.route("/teste_scraping")
 def teste_scraping():
     try:
-        url = "https://www.tipminer.com/br/historico/blaze/bac-bo?limit=600&timezone=America%2FSao_Paulo"
+        url = "https://www.tipminer.com/br/historico/blaze/bac-bo?limit=10&timezone=America%2FSao_Paulo"
         headers = {"User-Agent": "Mozilla/5.0"}
         response = requests.get(url, headers=headers)
         soup = BeautifulSoup(response.text, "html.parser")
 
         botoes = soup.select("button.cell--bac_bo")
-        botoes.reverse()
+        resultados = []
 
-        historico = []
-        for botao in botoes[:5]:  # só os primeiros 5 para teste
+        for botao in botoes[:5]:  # Pega os 5 primeiros para teste
             resultado = botao.get("data-result")
             tipo = botao.get("data-type")
             id_unico = botao.get("data-id")
-            historico.append({
+            resultados.append({
                 "id": id_unico,
                 "resultado": resultado,
                 "tipo": tipo
             })
 
-        texto = "Primeiros 5 resultados extraídos:\n"
-        for i, item in enumerate(historico):
-            texto += f"{i+1}: id={item['id']}, resultado={item['resultado']}, tipo={item['tipo']}\n"
+        return {"resultados": resultados}
 
-        print(texto)
-        return texto.replace("\n", "<br>")
     except Exception as e:
-        return f"Erro no teste scraping: {e}"
+        return {"error": str(e)}
 
 if __name__ == "__main__":
     threading.Thread(target=verificar_site, daemon=True).start()
