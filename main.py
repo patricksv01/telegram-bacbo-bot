@@ -1,154 +1,89 @@
-from flask import Flask
 import requests
 from bs4 import BeautifulSoup
-import threading
 import time
-from collections import deque
+import telegram
 
-app = Flask(__name__)
-
+# Configurações do bot
 TOKEN = "8100745572:AAHFY4gZKnDu6ep8YqgydqkcApcBSUhTnvI"
-CHAT_ID = "-1002649479196"
+CHAT_ID = "-1002116488128"
+bot = telegram.Bot(token=TOKEN)
 
-acertos_primeira = 0
-acertos_gale = 0
+# Estatísticas
+acertos = 0
+gales = 0
 erros = 0
+ultimos_resultados = []
 
-ultimos_ids = deque(maxlen=100)
-sinais_ativos = deque(maxlen=10)
-
-def send_message(text):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": text}
-    try:
-        requests.post(url, json=payload)
-    except Exception as e:
-        print("Erro ao enviar mensagem:", e)
-
-def obter_resultados_casinoscores():
-    url = "https://casinoscores.com/pt-br/bac-bo/"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    response = requests.get(url, headers=headers)
-    soup = BeautifulSoup(response.text, "html.parser")
+def extrair_resultados():
+    url = "https://casinoscores.com/es/bac-bo/"
+    response = requests.get(url)
+    soup = BeautifulSoup(response.text, 'html.parser')
 
     resultados = []
-    blocos = soup.select("div.round-details-modal_details_result_outcome__oczTv")
-
-    for i, bloco in enumerate(blocos):
-        empate = bloco.select_one('img[alt="Êxito"]')
-        soma_span = bloco.select_one(".bac-bo-dice-outcome span.ml-1")
-
-        if not empate or not soma_span:
+    entradas = soup.select(".card.rounded.shadow-sm.py-2.px-3.mb-2")
+    for entrada in entradas:
+        tipo = entrada.select_one('img[alt="Êxito"]')
+        if not tipo:
             continue
 
-        try:
-            soma = int(soma_span.text.strip().replace("Σ", ""))
-            id_unico = f"tie_{soma}_{i}"
-            resultados.append({
-                "id": id_unico,
-                "tipo": "tie",
-                "soma": soma
-            })
-        except Exception as e:
-            print(f"Erro no parse do bloco {i}: {e}")
+        resultado_texto = entrada.select_one("div.bac-bo-dice-outcome span.ml-1")
+        if not resultado_texto:
             continue
 
-    print(f"Resultados obtidos: {resultados}")
-    return list(reversed(resultados))
+        soma = resultado_texto.text.strip().replace('Σ', '')
+        if soma not in ['5', '6', '7']:
+            continue
 
-def verificar_site():
-    global acertos_primeira, acertos_gale, erros
+        cor = entrada.select_one('img.mb-1')
+        if not cor or "6--7--8.png" not in cor['src']:
+            continue  # só continua se for faixa amarela
 
-    while True:
-        try:
-            print("Verificando site...")
-            historico = obter_resultados_casinoscores()
+        resultados.append(soma)
 
-            if not historico:
-                print("Nenhum resultado obtido dessa vez.")
-            else:
-                print(f"Historico obtido com {len(historico)} itens.")
+    return resultados
 
-            for i, item in enumerate(historico):
-                if item["id"] in ultimos_ids:
-                    continue
+def verificar_sinal():
+    global acertos, gales, erros, ultimos_resultados
 
-                ultimos_ids.append(item["id"])
+    novos_resultados = extrair_resultados()
+    if not novos_resultados:
+        return
 
-                if item["soma"] in [5, 6, 7, 10]:
-                    sinais_ativos.append({
-                        "index": i,
-                        "verificado": False
-                    })
+    for resultado in novos_resultados:
+        if resultado in ultimos_resultados:
+            continue  # já tratado
 
-                    print(f"Novo sinal detectado: {item['soma']} (id: {item['id']})")
+        ultimos_resultados.append(resultado)
+        if len(ultimos_resultados) > 20:
+            ultimos_resultados = ultimos_resultados[-20:]
 
-                    mensagem = (
-                        f"🔴 SINAL DE ENTRADA\n"
-                        f"🎲 Resultado: {item['soma']} Amarelo (Tie)\n"
-                        f"📍 Apostar no VERMELHO até GALE 1\n\n"
-                        f"📊 Estatísticas:\n"
-                        f"✅ Acertos: {acertos_primeira}\n"
-                        f"🟡 Acertos no Gale: {acertos_gale}\n"
-                        f"❌ Erros: {erros}"
-                    )
-                    send_message(mensagem)
+        bot.send_message(chat_id=CHAT_ID, text=f"🎯 Entrada encontrada!\nResultado: TIE Σ{resultado} (Amarelo)\n\nEntrar no próximo!")
+        time.sleep(120)  # tempo do gale
 
-            for sinal in sinais_ativos:
-                if sinal["verificado"]:
-                    continue
-                index = sinal["index"]
-                if index + 2 < len(historico):
-                    prox1 = historico[index + 1]
-                    prox2 = historico[index + 2]
+        novos = extrair_resultados()
+        if resultado in novos:
+            acertos += 1
+            bot.send_message(chat_id=CHAT_ID, text="✅ Acerto de primeira!")
+        elif len(novos) > 0 and novos[0] == resultado:
+            gales += 1
+            bot.send_message(chat_id=CHAT_ID, text="🌀 Acerto no Gale!")
+        else:
+            erros += 1
+            bot.send_message(chat_id=CHAT_ID, text="❌ Erro.")
 
-                    if prox1["tipo"] != "tie":
-                        acertos_primeira += 1
-                        resultado_final = "✅ Acertamos de PRIMEIRA!"
-                    elif prox2["tipo"] != "tie":
-                        acertos_gale += 1
-                        resultado_final = "🟡 Acertamos no GALE!"
-                    else:
-                        erros += 1
-                        resultado_final = "❌ Não deu... foi ERRO."
+        # Atualiza estatísticas
+        estatisticas = f"""
+📊 Estatísticas:
+✅ Acertos: {acertos}
+🌀 Gales: {gales}
+❌ Erros: {erros}
+        """
+        bot.send_message(chat_id=CHAT_ID, text=estatisticas)
 
-                    total_acertos = acertos_primeira + acertos_gale
-                    total = total_acertos + erros
-                    porcentagem = round((total_acertos / total) * 100, 2) if total > 0 else 0
-
-                    mensagem = (
-                        f"📊 RESULTADO DO SINAL\n"
-                        f"{resultado_final}\n\n"
-                        f"✅ Acertos: {acertos_primeira}\n"
-                        f"🟡 Acertos no Gale: {acertos_gale}\n"
-                        f"❌ Erros: {erros}\n"
-                        f"📈 Porcentagem: {porcentagem}%"
-                    )
-                    send_message(mensagem)
-                    sinal["verificado"] = True
-
-        except Exception as e:
-            print("Erro ao verificar site:", e)
-
-        time.sleep(20)
-
-@app.route("/")
-def home():
-    return "🤖 Bot Bac Bo Patrick rodando com CasinoScores!"
-
-@app.route("/teste")
-def teste_manual():
-    mensagem = (
-        "🔴 SINAL DE ENTRADA (TESTE MANUAL)\n"
-        "🎲 Resultado: 6 Amarelo (Tie)\n"
-        "📍 Apostar no VERMELHO até GALE 1\n\n"
-        f"✅ Acertos: {acertos_primeira}\n"
-        f"🟡 Acertos no Gale: {acertos_gale}\n"
-        f"❌ Erros: {erros}"
-    )
-    send_message(mensagem)
-    return "✅ Sinal de teste enviado!"
-
-if __name__ == "__main__":
-    threading.Thread(target=verificar_site, daemon=True).start()
-    app.run(host="0.0.0.0", port=5000)
+while True:
+    try:
+        verificar_sinal()
+        time.sleep(30)
+    except Exception as e:
+        print(f"Erro: {e}")
+        time.sleep(60)
