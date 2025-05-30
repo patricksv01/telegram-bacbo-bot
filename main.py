@@ -83,6 +83,21 @@ def verificar_site():
 def index():
     return "Bot funcionando!"
 
+@app.route("/teste")
+def teste_manual():
+    mensagem = (
+        "🔴 SINAL DE ENTRADA (TESTE MANUAL)\n"
+        "🎲 Resultado: 6 Amarelo\n"
+        "📍 Apostar no VERMELHO até GALE 1\n\n"
+        "📊 Estatísticas:\n"
+        f"✅ Acertos: {acertos_primeira}\n"
+        f"🟡 Acertos no Gale: {acertos_gale}\n"
+        f"❌ Erros: {erros}\n"
+        f"📈 Porcentagem: 100%"
+    )
+    send_message(mensagem)
+    return "✅ Sinal de teste enviado!"
+
 if __name__ == "__main__":
     threading.Thread(target=verificar_site, daemon=True).start()
     app.run(host="0.0.0.0", port=5000, debug=True)
