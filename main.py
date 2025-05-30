@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask
 import requests
 from bs4 import BeautifulSoup
 import threading
@@ -7,16 +7,13 @@ from collections import deque
 
 app = Flask(__name__)
 
-# Token do seu bot e ID do canal
 TOKEN = "8100745572:AAHFY4gZKnDu6ep8YqgydqkcApcBSUhTnvI"
-CHAT_ID = "-1002677368681"  # ID do seu canal no Telegram
+CHAT_ID = "-1002677368681"  # Canal onde o bot vai mandar as análises
 
-# Estatísticas
 acertos_primeira = 0
 acertos_gale = 0
 erros = 0
 
-# Armazenamento de sinais
 ultimos_ids = deque(maxlen=100)
 sinais_ativos = deque(maxlen=10)
 
