@@ -11,7 +11,7 @@ CHAT_ID = "-1002102628380"  # ID do grupo Bac Bo Patrick
 acertos = 0
 acertos_gale = 0
 erros = 0
-ultimo_sinal = None
+ultimo_horario = None
 
 bot = telegram.Bot(token=TOKEN)
 
@@ -19,60 +19,52 @@ bot = telegram.Bot(token=TOKEN)
 def enviar_mensagem(mensagem):
     bot.send_message(chat_id=CHAT_ID, text=mensagem, parse_mode="HTML")
 
-# --- FUNÇÃO PRINCIPAL DE MONITORAMENTO ---
-def verificar_bacbo():
-    global ultimo_sinal, acertos, acertos_gale, erros
+# --- FUNÇÃO PARA MONITORAR O SITE TIPMINER ---
+def verificar_tipminer():
+    global ultimo_horario, acertos, acertos_gale, erros
 
-    url = "https://www.casinoscores.com/bacbo"
+    url = "https://www.tipminer.com/br/historico/jonbet/bac-bo"
     headers = {"User-Agent": "Mozilla/5.0"}
     response = requests.get(url, headers=headers)
     soup = BeautifulSoup(response.text, "html.parser")
 
-    linhas = soup.find_all("tr")
+    celulas = soup.find_all('div', class_='cell__content')
 
-    for linha in linhas:
+    for celula in celulas:
         try:
-            tie_img = linha.find("img", alt="Êxito")
-            if not tie_img:
-                continue  # Não é TIE
+            numero_div = celula.find('div', class_='cell__result')
+            hora_div = celula.find('div', class_='cell__date')
 
-            dados_span = linha.find("span", class_="ml-2")
-            if not dados_span or not dados_span.find("img"):
+            if not numero_div or not hora_div:
                 continue
 
-            dados_src = dados_span.find("img")["src"]
-            # Verifica se é 5, 6 ou 7 no src da imagem
-            if not any(num in dados_src for num in ["5", "6", "7"]):
-                continue
+            numero = numero_div.text.strip()
+            horario = hora_div.text.strip()
 
-            # Captura data e hora para evitar duplicatas
-            data_tag = linha.find("p", class_="dateTime_DateTime__date__bXWTP")
-            hora_tag = linha.find("p", class_="dateTime_DateTime__time__f0_Bn")
-            if not data_tag or not hora_tag:
-                continue
+            if numero not in ['5', '6', '7']:
+                continue  # Não é número alvo
 
-            data_hora = f"{data_tag.text.strip()} {hora_tag.text.strip()}"
-
-            if data_hora == ultimo_sinal:
+            if horario == ultimo_horario:
                 continue  # Já sinalizado
 
-            ultimo_sinal = data_hora
+            ultimo_horario = horario
 
             # Envia sinal no grupo
             enviar_mensagem(f"<b>🎯 SINAL IDENTIFICADO</b>\n"
-                            f"TIE com dado Σ5, Σ6 ou Σ7!\n"
-                            f"<b>🕒 Horário:</b> {data_hora}\n\n"
+                            f"Número amarelo: <b>{numero}</b>\n"
+                            f"<b>🕒 Horário:</b> {horario}\n\n"
                             f"🎲 Entrada: <b>TIE</b> (amarelo)\n"
                             f"🎯 Estatísticas:\n"
                             f"✅ Acertos: {acertos}\n"
                             f"🟡 Acertos no Gale: {acertos_gale}\n"
                             f"❌ Erros: {erros}")
             return
+
         except Exception as e:
             print(f"Erro: {e}")
 
 # --- LOOP PRINCIPAL ---
 if __name__ == "__main__":
     while True:
-        verificar_bacbo()
-        time.sleep(10)  # A cada 10 segundos
+        verificar_tipminer()
+        time.sleep(10)  # Verifica a cada 10 segundos
