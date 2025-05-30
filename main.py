@@ -1,148 +1,61 @@
-from flask import Flask
 import requests
-from bs4 import BeautifulSoup
-import threading
 import time
-from collections import deque
+from bs4 import BeautifulSoup
 
-app = Flask(__name__)
-
-TOKEN = "8100745572:AAHFY4gZKnDu6ep8YqgydqkcApcBSUhTnvI"
-CHAT_ID = "-1002301941872"  # Novo ID solicitado
-
-acertos_primeira = 0
-acertos_gale = 0
-erros = 0
-
-ultimos_ids = deque(maxlen=100)
-sinais_ativos = deque(maxlen=10)
+BOT_TOKEN = "8100745572:AAHFY4gZKnDu6ep8YqgydqkcApcBSUhTnvI"
+CHAT_ID = "-1002301941872"
+TARGET_NUMBERS = [33, 20, 17, 28, 7, 26, 1, 2, 18, 10]
+URL = "https://www.tipminer.com/br/historico/evolution/xxxtreme-lightning-roulette"
 
 def send_message(text):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": text}
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": text,
+        "parse_mode": "HTML"
+    }
     try:
-        requests.post(url, json=payload)
+        response = requests.post(url, data=payload)
+        if response.status_code != 200:
+            print(f"Erro ao enviar mensagem: {response.text}")
     except Exception as e:
-        print("Erro ao enviar mensagem:", e)
+        print(f"Exceção ao enviar mensagem: {e}")
 
-def obter_resultados_casinoscores():
-    url = "https://casinoscores.com/pt-br/bac-bo/"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    response = requests.get(url, headers=headers)
-    soup = BeautifulSoup(response.text, "html.parser")
+def get_last_number():
+    try:
+        response = requests.get(URL)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+        result_cells = soup.find_all("div", class_="cell__result")
+        if not result_cells:
+            return None
+        last_result = result_cells[-1].get_text(strip=True)
+        return int(last_result)
+    except Exception as e:
+        print(f"Erro ao capturar número: {e}")
+        return None
 
-    resultados = []
-    blocos = soup.select("div.round-details-modal_details_result_outcome__oczTv")
-
-    for i, bloco in enumerate(blocos):
-        empate = bloco.select_one('img[alt="Êxito"]')
-        soma_span = bloco.select_one(".bac-bo-dice-outcome span.ml-1")
-
-        if not empate or not soma_span:
-            continue
-
-        try:
-            soma = int(soma_span.text.strip().replace("Σ", ""))
-            id_unico = f"tie_{soma}_{i}"
-            resultados.append({
-                "id": id_unico,
-                "tipo": "tie",
-                "soma": soma
-            })
-        except Exception as e:
-            print(f"Erro no parse do bloco {i}: {e}")
-            continue
-
-    return list(reversed(resultados))
-
-def verificar_site():
-    global acertos_primeira, acertos_gale, erros
-
+def main():
+    last_checked = None
     while True:
-        try:
-            historico = obter_resultados_casinoscores()
-            if not historico:
-                continue
-
-            for i, item in enumerate(historico):
-                if item["id"] in ultimos_ids:
-                    continue
-
-                ultimos_ids.append(item["id"])
-
-                if item["soma"] in [5, 6, 7, 10]:
-                    sinais_ativos.append({
-                        "index": i,
-                        "verificado": False
-                    })
-
-                    mensagem = (
-                        f"🔴 SINAL DE ENTRADA\n"
-                        f"🎲 Resultado: {item['soma']} Amarelo (Tie)\n"
-                        f"📍 Apostar no VERMELHO até GALE 1\n\n"
-                        f"📊 Estatísticas:\n"
-                        f"✅ Acertos: {acertos_primeira}\n"
-                        f"🟡 Acertos no Gale: {acertos_gale}\n"
-                        f"❌ Erros: {erros}"
+        last_number = get_last_number()
+        if last_number is not None:
+            if last_number != last_checked:
+                last_checked = last_number
+                if last_number in TARGET_NUMBERS:
+                    message = (
+                        f"🎰 Número sorteado: <b>{last_number}</b>\n"
+                        "⚠️ Estratégia: Entrar na 1ª e 2ª coluna e cobrir o 0."
                     )
-                    send_message(mensagem)
-
-            for sinal in sinais_ativos:
-                if sinal["verificado"]:
-                    continue
-
-                index = sinal["index"]
-                if index + 2 < len(historico):
-                    prox1 = historico[index + 1]
-                    prox2 = historico[index + 2]
-
-                    if prox1["tipo"] != "tie":
-                        acertos_primeira += 1
-                        resultado_final = "✅ Acertamos de PRIMEIRA!"
-                    elif prox2["tipo"] != "tie":
-                        acertos_gale += 1
-                        resultado_final = "🟡 Acertamos no GALE!"
-                    else:
-                        erros += 1
-                        resultado_final = "❌ Não deu... foi ERRO."
-
-                    total_acertos = acertos_primeira + acertos_gale
-                    total = total_acertos + erros
-                    porcentagem = round((total_acertos / total) * 100, 2) if total > 0 else 0
-
-                    mensagem = (
-                        f"📊 RESULTADO DO SINAL\n"
-                        f"{resultado_final}\n\n"
-                        f"✅ Acertos: {acertos_primeira}\n"
-                        f"🟡 Acertos no Gale: {acertos_gale}\n"
-                        f"❌ Erros: {erros}\n"
-                        f"📈 Porcentagem: {porcentagem}%"
-                    )
-                    send_message(mensagem)
-                    sinal["verificado"] = True
-
-        except Exception as e:
-            print("Erro ao verificar site:", e)
-
-        time.sleep(20)
-
-@app.route("/")
-def home():
-    return "🤖 Bot Bac Bo Patrick rodando com CasinoScores!"
-
-@app.route("/teste")
-def teste_manual():
-    mensagem = (
-        "🔴 SINAL DE ENTRADA (TESTE MANUAL)\n"
-        "🎲 Resultado: 6 Amarelo (Tie)\n"
-        "📍 Apostar no VERMELHO até GALE 1\n\n"
-        f"✅ Acertos: {acertos_primeira}\n"
-        f"🟡 Acertos no Gale: {acertos_gale}\n"
-        f"❌ Erros: {erros}"
-    )
-    send_message(mensagem)
-    return "✅ Sinal de teste enviado!"
+                    send_message(message)
+                    print(f"Mensagem enviada: {last_number}")
+                else:
+                    print(f"Número {last_number} não está na lista alvo.")
+            else:
+                print("Nenhuma nova rodada.")
+        else:
+            print("Erro ao capturar o último número.")
+        time.sleep(60)
 
 if __name__ == "__main__":
-    threading.Thread(target=verificar_site, daemon=True).start()
-    app.run(host="0.0.0.0", port=5000)
+    main()
