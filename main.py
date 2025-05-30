@@ -34,7 +34,7 @@ def verificar_site():
             soup = BeautifulSoup(response.text, "html.parser")
 
             botoes = soup.select("button.cell--bac_bo")
-            botoes.reverse()  # do mais antigo pro mais recente
+            botoes.reverse()  # do mais antigo para o mais recente
 
             historico = []
             for botao in botoes:
@@ -88,7 +88,6 @@ def verificar_site():
 
             # Verificar sinais ativos
             for sinal in sinais_ativos:
-                global acertos_primeira, acertos_gale, erros
                 if sinal["verificado"]:
                     continue
                 index = sinal["index"]
