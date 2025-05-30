@@ -3,68 +3,70 @@ from bs4 import BeautifulSoup
 import time
 import telegram
 
-# --- CONFIGURAÇÕES DO TELEGRAM ---
-TOKEN = "8100745572:AAHFY4gZKnDu6ep8YqgydqkcApcBSUhTnvI"
-CHAT_ID = "-1002102628380"  # ID do grupo Bac Bo Patrick
+# Configurações do Telegram
+TELEGRAM_TOKEN = '8100745572:AAHFY4gZKnDu6ep8YqgydqkcApcBSUhTnvI'  # Seu token real
+CHAT_ID = '-1002121860565'  # Grupo Bac Bo Patrick
 
-# --- ESTATÍSTICAS ---
-acertos = 0
-acertos_gale = 0
-erros = 0
-ultimo_horario = None
+bot = telegram.Bot(token=TELEGRAM_TOKEN)
 
-bot = telegram.Bot(token=TOKEN)
+# Para evitar mensagens repetidas
+sinais_enviados = set()
 
-# --- FUNÇÃO PARA ENVIAR MENSAGEM ---
-def enviar_mensagem(mensagem):
-    bot.send_message(chat_id=CHAT_ID, text=mensagem, parse_mode="HTML")
+def extrair_sinais(html):
+    sinais = []
+    soup = BeautifulSoup(html, 'html.parser')
 
-# --- FUNÇÃO PARA MONITORAR O SITE TIPMINER ---
-def verificar_tipminer():
-    global ultimo_horario, acertos, acertos_gale, erros
+    botoes = soup.find_all('button', class_='cell--bac_bo')
+    for btn in botoes:
+        numero = btn.get('data-result')
+        tipo = btn.get('data-type')
+        hora = btn.get('data-hour')
+        minuto = btn.get('data-minute')
 
-    url = "https://www.tipminer.com/br/historico/jonbet/bac-bo"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    response = requests.get(url, headers=headers)
-    soup = BeautifulSoup(response.text, "html.parser")
+        if not (numero and tipo and hora and minuto):
+            continue
 
-    celulas = soup.find_all('div', class_='cell__content')
+        numero_int = int(numero)
 
-    for celula in celulas:
-        try:
-            numero_div = celula.find('div', class_='cell__result')
-            hora_div = celula.find('div', class_='cell__date')
+        # Verifica condição para sinal
+        if (numero_int in [5, 6, 7] and tipo in ['player', 'tie']) or (numero_int == 10 and tipo == 'tie'):
+            sinal_id = f"{tipo}_{numero}_{hora}_{minuto}"
+            sinais.append((sinal_id, numero_int, tipo, hora, minuto))
+    return sinais
 
-            if not numero_div or not hora_div:
-                continue
+def buscar_resultados():
+    url = 'https://www.casinoscores.com/games/bac-bo'  # Altere se necessário
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+    }
+    try:
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            return response.text
+        else:
+            print('Erro ao buscar dados:', response.status_code)
+            return None
+    except Exception as e:
+        print('Erro na requisição:', e)
+        return None
 
-            numero = numero_div.text.strip()
-            horario = hora_div.text.strip()
+def enviar_mensagem(sinal):
+    sinal_id, numero, tipo, hora, minuto = sinal
+    mensagem = f"🎯 *SINAL DETECTADO!*\nNúmero: *{numero}*\nTipo: *{tipo.upper()}*\nHorário: *{hora}:{minuto}*"
+    print(mensagem)
+    bot.send_message(chat_id=CHAT_ID, text=mensagem, parse_mode='Markdown')
 
-            if numero not in ['5', '6', '7']:
-                continue  # Não é número alvo
-
-            if horario == ultimo_horario:
-                continue  # Já sinalizado
-
-            ultimo_horario = horario
-
-            # Envia sinal no grupo
-            enviar_mensagem(f"<b>🎯 SINAL IDENTIFICADO</b>\n"
-                            f"Número amarelo: <b>{numero}</b>\n"
-                            f"<b>🕒 Horário:</b> {horario}\n\n"
-                            f"🎲 Entrada: <b>TIE</b> (amarelo)\n"
-                            f"🎯 Estatísticas:\n"
-                            f"✅ Acertos: {acertos}\n"
-                            f"🟡 Acertos no Gale: {acertos_gale}\n"
-                            f"❌ Erros: {erros}")
-            return
-
-        except Exception as e:
-            print(f"Erro: {e}")
-
-# --- LOOP PRINCIPAL ---
-if __name__ == "__main__":
+def main():
     while True:
-        verificar_tipminer()
-        time.sleep(10)  # Verifica a cada 10 segundos
+        html = buscar_resultados()
+        if html:
+            sinais = extrair_sinais(html)
+            for sinal in sinais:
+                sinal_id = sinal[0]
+                if sinal_id not in sinais_enviados:
+                    enviar_mensagem(sinal)
+                    sinais_enviados.add(sinal_id)
+        time.sleep(10)  # Checagem a cada 10 segundos
+
+if __name__ == '__main__':
+    main()
