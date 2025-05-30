@@ -97,7 +97,12 @@ def teste_manual():
     )
     send_message(mensagem)
     return "✅ Sinal de teste enviado!"
-
+    
+@app.route("/teste")
+def teste_manual():
+    send_message("✅ Este é um sinal de teste manual.")
+    return "Sinal de teste enviado!"
+    
 if __name__ == "__main__":
     threading.Thread(target=verificar_site, daemon=True).start()
     app.run(host="0.0.0.0", port=5000, debug=True)
