@@ -1,144 +1,59 @@
-from flask import Flask
 import requests
 from bs4 import BeautifulSoup
-import threading
 import time
-from collections import deque
+import telegram
 
-app = Flask(__name__)
-
+# === CONFIGURAÇÕES ===
 TOKEN = "8100745572:AAHFY4gZKnDu6ep8YqgydqkcApcBSUhTnvI"
-CHAT_ID = "-1002649479196"
+GROUP_ID = -1002080473293  # ID do grupo Bac Bo Patrick
 
-acertos_primeira = 0
+bot = telegram.Bot(token=TOKEN)
+
+# Estatísticas globais
+acertos = 0
 acertos_gale = 0
 erros = 0
 
-ultimos_ids = deque(maxlen=100)
-sinais_ativos = deque(maxlen=10)
+# Guarda o último resultado analisado para não repetir
+ultimo_resultado = ""
 
-def send_message(text):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": text}
+def verificar_resultado():
+    global acertos, acertos_gale, erros, ultimo_resultado
+
     try:
-        requests.post(url, json=payload)
+        url = "https://www.casinoscores.com/bacbo"
+        response = requests.get(url)
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        # Encontra os resultados (último vem primeiro)
+        resultados = soup.find_all("td", class_="text-nowrap text-center")
+        for td in resultados:
+            img = td.find("img", alt="Êxito")
+            if not img:
+                continue
+
+            # Verifica se é TIE
+            if "TIE.png" in img["src"]:
+                soma_spans = td.find_all("span", class_="ml-1")
+                for span in soma_spans:
+                    texto = span.get_text(strip=True)
+                    if texto.startswith("Σ") and len(texto) == 3:
+                        if texto != ultimo_resultado:
+                            ultimo_resultado = texto
+                            if texto in ["Σ5", "Σ6", "Σ7"]:
+                                acertos += 1
+                                bot.send_message(
+                                    chat_id=GROUP_ID,
+                                    text=f"🎯 SINAL ENCONTRADO!\nSaiu empate {texto} amarelo (TIE)\n\n📊 Estatísticas:\n✅ Acertos: {acertos}\n🟡 Acertos no Gale: {acertos_gale}\n❌ Erros: {erros}"
+                                )
+                            else:
+                                erros += 1
+                            return  # só analisa o último resultado
+
     except Exception as e:
-        print("Erro ao enviar mensagem:", e)
+        print("Erro ao verificar resultado:", e)
 
-def obter_resultados_casinoscores():
-    url = "https://casinoscores.com/pt-br/bac-bo/"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    response = requests.get(url, headers=headers)
-    soup = BeautifulSoup(response.text, "html.parser")
-
-    resultados = []
-    blocos = soup.select("div.round-details-modal_details_result_outcome__oczTv")
-
-    for i, bloco in enumerate(blocos):
-        empate = bloco.select_one('img[alt="Êxito"]')
-        soma_span = bloco.select_one(".bac-bo-dice-outcome span.ml-1")
-
-        if not empate or not soma_span:
-            continue
-
-        try:
-            soma = int(soma_span.text.strip().replace("Σ", ""))
-            id_unico = f"tie_{soma}_{i}"
-            resultados.append({
-                "id": id_unico,
-                "tipo": "tie",
-                "soma": soma
-            })
-        except:
-            continue
-
-    return list(reversed(resultados))
-
-def verificar_site():
-    global acertos_primeira, acertos_gale, erros
-
-    while True:
-        try:
-            historico = obter_resultados_casinoscores()
-
-            for i, item in enumerate(historico):
-                if item["id"] in ultimos_ids:
-                    continue
-
-                ultimos_ids.append(item["id"])
-
-                if item["soma"] in [5, 6, 7, 10]:
-                    sinais_ativos.append({
-                        "index": i,
-                        "verificado": False
-                    })
-
-                    mensagem = (
-                        f"🔴 SINAL DE ENTRADA\n"
-                        f"🎲 Resultado: {item['soma']} Amarelo (Tie)\n"
-                        f"📍 Apostar no VERMELHO até GALE 1\n\n"
-                        f"📊 Estatísticas:\n"
-                        f"✅ Acertos: {acertos_primeira}\n"
-                        f"🟡 Acertos no Gale: {acertos_gale}\n"
-                        f"❌ Erros: {erros}"
-                    )
-                    send_message(mensagem)
-
-            for sinal in sinais_ativos:
-                if sinal["verificado"]:
-                    continue
-                index = sinal["index"]
-                if index + 2 < len(historico):
-                    prox1 = historico[index + 1]
-                    prox2 = historico[index + 2]
-
-                    if prox1["tipo"] != "tie":
-                        acertos_primeira += 1
-                        resultado_final = "✅ Acertamos de PRIMEIRA!"
-                    elif prox2["tipo"] != "tie":
-                        acertos_gale += 1
-                        resultado_final = "🟡 Acertamos no GALE!"
-                    else:
-                        erros += 1
-                        resultado_final = "❌ Não deu... foi ERRO."
-
-                    total_acertos = acertos_primeira + acertos_gale
-                    total = total_acertos + erros
-                    porcentagem = round((total_acertos / total) * 100, 2) if total > 0 else 0
-
-                    mensagem = (
-                        f"📊 RESULTADO DO SINAL\n"
-                        f"{resultado_final}\n\n"
-                        f"✅ Acertos: {acertos_primeira}\n"
-                        f"🟡 Acertos no Gale: {acertos_gale}\n"
-                        f"❌ Erros: {erros}\n"
-                        f"📈 Porcentagem: {porcentagem}%"
-                    )
-                    send_message(mensagem)
-                    sinal["verificado"] = True
-
-        except Exception as e:
-            print("Erro ao verificar site:", e)
-
-        time.sleep(20)
-
-@app.route("/")
-def home():
-    return "🤖 Bot Bac Bo Patrick rodando com CasinoScores!"
-
-@app.route("/teste")
-def teste_manual():
-    mensagem = (
-        "🔴 SINAL DE ENTRADA (TESTE MANUAL)\n"
-        "🎲 Resultado: 6 Amarelo (Tie)\n"
-        "📍 Apostar no VERMELHO até GALE 1\n\n"
-        f"✅ Acertos: {acertos_primeira}\n"
-        f"🟡 Acertos no Gale: {acertos_gale}\n"
-        f"❌ Erros: {erros}"
-    )
-    send_message(mensagem)
-    return "✅ Sinal de teste enviado!"
-
-if __name__ == "__main__":
-    threading.Thread(target=verificar_site, daemon=True).start()
-    app.run(host="0.0.0.0", port=5000)
+# Loop contínuo (verifica a cada 60 segundos)
+while True:
+    verificar_resultado()
+    time.sleep(60)  # espera 1 minuto
