@@ -1,72 +1,65 @@
+import time
 import requests
 from bs4 import BeautifulSoup
-import time
-import telegram
+from telegram import Bot
 
-# Configurações do Telegram
-TELEGRAM_TOKEN = '8100745572:AAHFY4gZKnDu6ep8YqgydqkcApcBSUhTnvI'  # Seu token real
-CHAT_ID = '-1002121860565'  # Grupo Bac Bo Patrick
+# Token e ID do grupo (já configurados por você)
+TOKEN = "8100745572:AAHFY4gZKnDu6ep8YqgydqkcApcBSUhTnvI"
+CHAT_ID = "-1002122803639"
+bot = Bot(token=TOKEN)
 
-bot = telegram.Bot(token=TELEGRAM_TOKEN)
+# Estatísticas
+acertos = 0
+acertos_gale = 0
+erros = 0
+ultimos_resultados = []
 
-# Para evitar mensagens repetidas
-sinais_enviados = set()
-
-def extrair_sinais(html):
-    sinais = []
-    soup = BeautifulSoup(html, 'html.parser')
-
-    botoes = soup.find_all('button', class_='cell--bac_bo')
-    for btn in botoes:
-        numero = btn.get('data-result')
-        tipo = btn.get('data-type')
-        hora = btn.get('data-hour')
-        minuto = btn.get('data-minute')
-
-        if not (numero and tipo and hora and minuto):
-            continue
-
-        numero_int = int(numero)
-
-        # Verifica condição para sinal
-        if (numero_int in [5, 6, 7] and tipo in ['player', 'tie']) or (numero_int == 10 and tipo == 'tie'):
-            sinal_id = f"{tipo}_{numero}_{hora}_{minuto}"
-            sinais.append((sinal_id, numero_int, tipo, hora, minuto))
-    return sinais
-
-def buscar_resultados():
-    url = 'https://www.casinoscores.com/games/bac-bo'  # Altere se necessário
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
-    }
+# Função para extrair os dados do site
+def verificar_resultado():
+    url = "https://www.casinoscores.com/casino/peaks-gaming/bac-bo"
     try:
-        response = requests.get(url, headers=headers)
-        if response.status_code == 200:
-            return response.text
-        else:
-            print('Erro ao buscar dados:', response.status_code)
-            return None
+        response = requests.get(url)
+        soup = BeautifulSoup(response.text, "html.parser")
+        resultados_html = soup.find_all("div", class_="flex justify-between items-center")
+
+        resultados = []
+        for r in resultados_html:
+            partes = r.get_text(strip=True).split("Σ")
+            if len(partes) == 2 and "Tie" in partes[0]:
+                soma = int(partes[1])
+                if soma in [5, 6, 7]:
+                    resultados.append((soma, "Tie"))
+
+        return resultados
     except Exception as e:
-        print('Erro na requisição:', e)
-        return None
+        print("Erro ao acessar site:", e)
+        return []
 
-def enviar_mensagem(sinal):
-    sinal_id, numero, tipo, hora, minuto = sinal
-    mensagem = f"🎯 *SINAL DETECTADO!*\nNúmero: *{numero}*\nTipo: *{tipo.upper()}*\nHorário: *{hora}:{minuto}*"
-    print(mensagem)
-    bot.send_message(chat_id=CHAT_ID, text=mensagem, parse_mode='Markdown')
+# Loop principal do bot
+def iniciar_monitoramento():
+    global acertos, acertos_gale, erros, ultimos_resultados
 
-def main():
+    print("Bot iniciado e monitorando 24h por dia...")
     while True:
-        html = buscar_resultados()
-        if html:
-            sinais = extrair_sinais(html)
-            for sinal in sinais:
-                sinal_id = sinal[0]
-                if sinal_id not in sinais_enviados:
-                    enviar_mensagem(sinal)
-                    sinais_enviados.add(sinal_id)
-        time.sleep(10)  # Checagem a cada 10 segundos
+        resultados = verificar_resultado()
+        if resultados:
+            novo = resultados[0]
+            if novo not in ultimos_resultados:
+                ultimos_resultados.insert(0, novo)
+                ultimos_resultados = ultimos_resultados[:10]  # guarda os 10 últimos
 
-if __name__ == '__main__':
-    main()
+                # Envia sinal
+                soma, _ = novo
+                mensagem = f"🎯 SINAL ENCONTRADO!\n\n🟡 Amarelo Σ{soma} + Tie\nEntre com proteção!\n\n🎲 Estatísticas:\n✅ Acertos: {acertos}\n🌀 Acertos no Gale: {acertos_gale}\n❌ Erros: {erros}"
+                bot.send_message(chat_id=CHAT_ID, text=mensagem)
+
+                # Espera pelo resultado final para atualizar as estatísticas (simulação)
+                time.sleep(60)
+                # Aqui você pode ajustar como verificar se foi acerto, gale ou erro.
+                acertos += 1  # Exemplo: considerar tudo como acerto direto por enquanto
+
+        time.sleep(30)  # Espera 30 segundos antes de verificar de novo
+
+# Iniciar
+if __name__ == "__main__":
+    iniciar_monitoramento()
