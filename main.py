@@ -1,9 +1,9 @@
-
 from flask import Flask
 import requests
 from bs4 import BeautifulSoup
 import threading
 import time
+from collections import deque
 
 app = Flask(__name__)
 
@@ -13,12 +13,15 @@ CHAT_ID = "-1002649479196"
 acertos_primeira = 0
 acertos_gale = 0
 erros = 0
-ultimos_ids = set()
+ultimos_ids = deque(maxlen=50)
 
 def send_message(text):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": text}
-    requests.post(url, json=payload)
+    try:
+        requests.post(url, json=payload)
+    except Exception as e:
+        print("Erro ao enviar mensagem:", e)
 
 def verificar_site():
     global acertos_primeira, acertos_gale, erros, ultimos_ids
@@ -42,9 +45,7 @@ def verificar_site():
                 if id_unico in ultimos_ids:
                     continue
 
-                ultimos_ids.add(id_unico)
-                if len(ultimos_ids) > 50:
-                    ultimos_ids = set(list(ultimos_ids)[-50:])
+                ultimos_ids.append(id_unico)
 
                 if not resultado:
                     resultado_tag = botao.select_one(".cell__result")
@@ -56,8 +57,9 @@ def verificar_site():
 
                 resultado_int = int(resultado)
 
+                # Aqui está sua regra para enviar sinal quando tipo == "tie" e resultado em [5,6,7]
                 if tipo == "tie" and resultado_int in [5, 6, 7]:
-                    acertos_primeira += 1
+                    acertos_primeira += 1  # Você pode adaptar para tratar acertos_gale e erros conforme quiser
                     total_acertos = acertos_primeira + acertos_gale
                     total = total_acertos + erros
                     porcentagem = round((total_acertos / total) * 100, 2) if total > 0 else 0
@@ -97,12 +99,7 @@ def teste_manual():
     )
     send_message(mensagem)
     return "✅ Sinal de teste enviado!"
-    
-@app.route("/teste")
-def teste_manual():
-    send_message("✅ Este é um sinal de teste manual.")
-    return "Sinal de teste enviado!"
-    
+
 if __name__ == "__main__":
     threading.Thread(target=verificar_site, daemon=True).start()
     app.run(host="0.0.0.0", port=5000, debug=True)
