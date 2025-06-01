@@ -15,15 +15,18 @@ def webhook():
 def index():
     return 'Bot está rodando com sucesso!'
 
+# Comando /start
 @bot.message_handler(commands=['start'])
 def start(message):
     bot.reply_to(message, "✅ Bot está ativo!\nEnvie uma mensagem no seu canal para descobrir o ID.")
 
+# Captura mensagens enviadas em canais
 @bot.channel_post_handler(func=lambda m: True)
 def pegar_id_canal(message):
     canal_id = message.chat.id
     bot.send_message(canal_id, f"🆔 ID do canal: `{canal_id}`", parse_mode="Markdown")
 
+# Inicia o webhook
 if __name__ == '__main__':
     bot.remove_webhook()
     bot.set_webhook(url='https://telegram-bacbo-bot.onrender.com/webhook')
