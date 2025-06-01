@@ -1,33 +1,74 @@
 import telebot
 from flask import Flask, request
+import requests
 
 API_TOKEN = '8161236137:AAEhQRE_tXjaRq1JAxO6we3a5uY7qc0T8l4'
 WEBHOOK_URL = 'https://telegram-bacbo-bot.onrender.com/webhook'
-MEU_ID = 5616062392  # Seu ID privado para receber o ID do canal
 
 bot = telebot.TeleBot(API_TOKEN)
 app = Flask(__name__)
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    update = telebot.types.Update.de_json(request.data.decode('utf-8'))
+    json_str = request.get_data().decode('utf-8')
+    update = telebot.types.Update.de_json(json_str)
     bot.process_new_updates([update])
     return 'OK', 200
 
 @app.route('/')
 def index():
-    return '✅ Bot está rodando com sucesso!'
+    return 'Bot rodando!'
 
-# Comando /start
+# Comando /start simples
 @bot.message_handler(commands=['start'])
-def start(message):
-    bot.reply_to(message, "✅ Bot está ativo!\nEnvie uma mensagem no seu canal para descobrir o ID.")
+def start_handler(message):
+    bot.reply_to(message, "Olá! Bot está funcionando.")
 
-# Captura mensagens em canais e envia o ID do canal para você
-@bot.channel_post_handler(func=lambda m: True)
-def pegar_id_canal(message):
-    canal_id = message.chat.id
-    bot.send_message(MEU_ID, f"🆔 ID do canal recebido: `{canal_id}`", parse_mode="Markdown")
+# Comando /check para checklist básico
+@bot.message_handler(commands=['check'])
+def check_handler(message):
+    chat_id = message.chat.id
+    responses = []
+
+    # 1. Testar token válido (getMe)
+    try:
+        r = requests.get(f"https://api.telegram.org/bot{API_TOKEN}/getMe")
+        if r.status_code == 200 and r.json().get("ok"):
+            responses.append("✅ Token válido")
+        else:
+            responses.append("❌ Token inválido ou API inacessível")
+    except Exception as e:
+        responses.append(f"❌ Erro na requisição getMe: {e}")
+
+    # 2. Testar webhook configurado
+    try:
+        r = requests.get(f"https://api.telegram.org/bot{API_TOKEN}/getWebhookInfo")
+        if r.status_code == 200 and r.json().get("ok"):
+            webhook_url = r.json()["result"].get("url")
+            pending_count = r.json()["result"].get("pending_update_count", 0)
+            if webhook_url == WEBHOOK_URL:
+                responses.append(f"✅ Webhook configurado: {webhook_url}")
+            else:
+                responses.append(f"⚠️ Webhook configurado diferente: {webhook_url}")
+            responses.append(f"🔄 Updates pendentes: {pending_count}")
+        else:
+            responses.append("❌ Não foi possível obter info do webhook")
+    except Exception as e:
+        responses.append(f"❌ Erro na requisição getWebhookInfo: {e}")
+
+    # 3. Testar permissão para enviar mensagem no chat atual
+    try:
+        test_message = bot.send_message(chat_id, "🧪 Teste de permissão para enviar mensagem")
+        bot.delete_message(chat_id, test_message.message_id)  # Apaga o teste
+        responses.append("✅ Permissão para enviar mensagens OK")
+    except Exception as e:
+        responses.append(f"❌ Sem permissão para enviar mensagens: {e}")
+
+    # 4. Testar se o bot está ativo (responder comandos)
+    responses.append("✅ Bot ativo e respondendo comandos")
+
+    # Monta e envia resposta
+    bot.send_message(chat_id, "\n".join(responses))
 
 if __name__ == '__main__':
     bot.remove_webhook()
