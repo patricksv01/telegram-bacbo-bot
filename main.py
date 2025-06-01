@@ -1,7 +1,6 @@
 import telebot
 
-bot = telebot.TeleBot("7648649111:AAGPpFEW9WAT-9I3xXt9jla4kSHCvsUkWZM
-")
+bot = telebot.TeleBot("8161236137:AAEhQRE_tXjaRq1JAxO6we3a5uY7qc0T8l4")
 
 @bot.message_handler(func=lambda message: True)
 def pegar_id(message):
