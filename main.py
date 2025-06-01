@@ -15,7 +15,7 @@ def webhook():
 
 @app.route('/')
 def index():
-    return 'Bot está rodando com sucesso!'
+    return '✅ Bot está rodando com sucesso!'
 
 # Comando /start
 @bot.message_handler(commands=['start'])
@@ -26,7 +26,6 @@ def start(message):
 @bot.channel_post_handler(func=lambda m: True)
 def pegar_id_canal(message):
     canal_id = message.chat.id
-    print(f"[CANAL] Mensagem recebida de: {message.chat.title} (ID: {canal_id})")
     bot.send_message(canal_id, f"🆔 ID do canal: `{canal_id}`", parse_mode="Markdown")
 
 # Inicia o webhook
