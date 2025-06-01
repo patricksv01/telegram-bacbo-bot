@@ -4,6 +4,9 @@ from flask import Flask, request
 API_TOKEN = '8161236137:AAEhQRE_tXjaRq1JAxO6we3a5uY7qc0T8l4'
 WEBHOOK_URL = 'https://telegram-bacbo-bot.onrender.com/webhook'
 
+# ID do usuário para onde o bot enviará o ID do canal
+ADMIN_ID = 5616062392
+
 bot = telebot.TeleBot(API_TOKEN)
 app = Flask(__name__)
 
@@ -22,11 +25,13 @@ def index():
 def start(message):
     bot.reply_to(message, "✅ Bot está ativo!\nEnvie uma mensagem no seu canal para descobrir o ID.")
 
-# Captura mensagens em canais e responde com o ID
+# Captura mensagens em canais e envia o ID do canal para o admin (você)
 @bot.channel_post_handler(func=lambda m: True)
 def pegar_id_canal(message):
     canal_id = message.chat.id
-    bot.send_message(canal_id, f"🆔 ID do canal: `{canal_id}`", parse_mode="Markdown")
+    canal_title = message.chat.title
+    texto = f"🆔 ID do canal \"{canal_title}\": `{canal_id}`"
+    bot.send_message(ADMIN_ID, texto, parse_mode="Markdown")
 
 # Inicia o webhook
 if __name__ == '__main__':
